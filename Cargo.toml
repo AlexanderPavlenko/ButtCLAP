@@ -1,0 +1,42 @@
+[package]
+name = "buttclap"
+version = "0.1.0"
+edition = "2021"
+authors = ["Lexi <x.ywtop@slmail.me>"]
+license = "GPL-3.0-or-later"
+homepage = "https://github.com/AlexanderPavlenko/ButtCLAP"
+description = "CLAP plugin to control things via Intiface® Central"
+
+[workspace]
+members = ["xtask"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Remove the `assert_process_allocs` feature to allow allocations on the audio
+# thread in debug builds.
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+# Uncomment the below line to disable the on-by-default VST3 feature to remove
+# the GPL compatibility requirement
+# nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["assert_process_allocs"] }
+
+buttplug_client = { git = "https://github.com/buttplugio/buttplug", rev = "3334d6e3a7e827072aeaca5cdb3dd4dd43f854a7" } # v10.0.0-beta2
+buttplug_transport_websocket_tungstenite = { git = "https://github.com/buttplugio/buttplug", rev = "3334d6e3a7e827072aeaca5cdb3dd4dd43f854a7" }
+evmap = "11.0.0"
+
+# not exported by buttplug_core
+tokio = { version = "*", features = ["sync", "time", "macros"] }
+futures = "*"
+
+# not exported by nih_plug
+crossbeam = "*"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"
