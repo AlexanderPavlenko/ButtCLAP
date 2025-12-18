@@ -3,9 +3,10 @@ use buttplug_client::{
     ButtplugClientEvent,
 };
 use buttplug_transport_websocket_tungstenite::ButtplugWebsocketClientTransport;
-use crossbeam::channel::{Receiver, Sender};
+use crossbeam::channel::{bounded, Receiver, Sender};
 use evmap;
-use futures::StreamExt;
+use evmap::handles::{ReadHandle, WriteHandle};
+use futures::{Stream, StreamExt};
 use nih_plug::prelude::*;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -14,23 +15,18 @@ use std::time::Duration;
 use tokio;
 use tokio::task;
 use tokio::task::yield_now;
-use tokio::time::sleep;
 
 static START: Once = Once::new();
 
 struct Buttclap {
     params: Arc<ButtclapParams>,
     intiface_url: String,
-    // intiface_devices: (
-    //     evmap::handles::WriteHandle<String, Device>,
-    //     evmap::handles::ReadHandle<String, Device>,
-    // ),
     channel: (Sender<f32>, Receiver<f32>),
 }
 
 // https://github.com/robbert-vdh/nih-plug/pull/106/files
 enum ButtclapBackgroundTask {
-    IntifaceConnection,
+    Process,
 }
 
 #[derive(Params)]
@@ -47,7 +43,7 @@ impl Default for Buttclap {
         Self {
             params: Arc::new(ButtclapParams::default()),
             intiface_url: String::from("ws://127.0.0.1:12345"),
-            channel: crossbeam::channel::bounded(1),
+            channel: bounded(1),
         }
     }
 }
@@ -92,146 +88,8 @@ impl Plugin for Buttclap {
         let intiface_url = self.intiface_url.clone();
         let channel = self.channel.1.clone();
         Box::new(move |task| match task {
-            ButtclapBackgroundTask::IntifaceConnection => {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_io()
-                    .build()
-                    .unwrap();
-                let intiface_url = intiface_url.clone();
-                let channel = channel.clone();
-
-                runtime.block_on(async move {
-                    nih_dbg!("runtime.block_on");
-                    let intiface_url = intiface_url.clone();
-                    let channel = channel.clone();
-                    let local = task::LocalSet::new();
-                    let local_task = async move {
-                        let (mut devices_mut, devices) =
-                            unsafe { evmap::new_assert_stable::<String, Device>() };
-                        let intiface_url = intiface_url.clone();
-                        let channel = channel.clone();
-
-                        let intiface_task = async move {
-                            loop {
-                                nih_dbg!("intiface_task loop");
-                                let client = ButtplugClient::new("buttclap");
-                                let connector = ButtplugRemoteClientConnector::<
-                                    ButtplugWebsocketClientTransport,
-                                >::new(
-                                    ButtplugWebsocketClientTransport::new_insecure_connector(
-                                        &intiface_url,
-                                    ),
-                                );
-
-                                match client.connect(connector).await {
-                                    Ok(_) => {
-                                        match client.start_scanning().await {
-                                            Ok(_) => {}
-                                            Err(e) => {
-                                                nih_dbg!(e);
-                                                sleep(Duration::from_secs(1)).await;
-                                                continue; // re-connect in a loop
-                                            }
-                                        }
-
-                                        let event_stream = client.event_stream();
-                                        futures::pin_mut!(event_stream);
-                                        let intiface_event_loop = async {
-                                            nih_dbg!("intiface_event_loop");
-                                            while let Some(event) = event_stream.next().await {
-                                                nih_dbg!(&event);
-                                                match event {
-                                                    ButtplugClientEvent::DeviceAdded(device) => {
-                                                        // let name = Box::leak(
-                                                        //     normalize_device_name(device.name())
-                                                        //         .into_boxed_str(),
-                                                        // );
-                                                        let name = crate::normalize_device_name(
-                                                            device.name(),
-                                                        );
-                                                        devices_mut.update(
-                                                            name,
-                                                            Device {
-                                                                device: Arc::new(device),
-                                                            },
-                                                        );
-                                                        // devices.update(
-                                                        //     DEVICES_LAST,
-                                                        //     Device {
-                                                        //         device: device.clone(),
-                                                        //     },
-                                                        // );
-                                                        devices_mut.publish();
-                                                        // info!("[{}] added", name);
-                                                        yield_now().await;
-                                                    }
-                                                    ButtplugClientEvent::DeviceRemoved(_device) => {
-                                                        // warn!("[{}] removed", normalize_device_name(&device.name));
-                                                        // rescanning, maybe a temporary disconnect
-                                                        let _ = client.stop_scanning().await;
-                                                        let _ = client.start_scanning().await;
-                                                    }
-                                                    ButtplugClientEvent::ServerDisconnect
-                                                    | ButtplugClientEvent::Error(_) => {
-                                                        devices_mut.purge();
-                                                        devices_mut.publish();
-                                                        sleep(Duration::from_secs(1)).await;
-                                                        continue; // re-connect in a loop
-                                                    }
-                                                    _ => {}
-                                                }
-                                            }
-                                        };
-
-                                        intiface_event_loop.await;
-                                    }
-                                    Err(e) => {
-                                        nih_dbg!(e);
-                                        sleep(Duration::from_secs(1)).await;
-                                        continue; // re-connect in a loop
-                                    }
-                                }
-                            }
-                        };
-
-                        let modulation_task = async move {
-                            nih_dbg!("modulation_task");
-                            loop {
-                                match channel.recv_timeout(Duration::from_millis(100)) {
-                                    Ok(level) => {
-                                        nih_dbg!(level);
-                                        match devices.enter() {
-                                            Some(devices) => {
-                                                for (_name, value) in devices.iter() {
-                                                    match value.get_one() {
-                                                        Some(device) => {
-                                                            nih_dbg!(device);
-                                                            match device.vibrate(level as f64).await {
-                                                                Ok(_) => {}
-                                                                Err(e) => { nih_dbg!(e); }
-                                                            };
-                                                        }
-                                                        _ => {}
-                                                    };
-                                                }
-                                            }
-                                            None => {}
-                                        };
-                                    }
-                                    Err(_) => {}
-                                }
-                                yield_now().await;
-                            }
-                        };
-
-                        task::spawn_local(intiface_task);
-                        task::spawn_local(modulation_task);
-                    };
-
-                    local.run_until(local_task).await;
-                    local.await;
-                });
-                nih_dbg!("Unexpected: runtime.block_on should not return");
+            ButtclapBackgroundTask::Process => {
+                background_process(intiface_url.clone(), channel.clone());
             }
         })
     }
@@ -264,14 +122,14 @@ impl Plugin for Buttclap {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         START.call_once(|| {
-            nih_dbg!("START.call_once");
-            context.execute_background(Self::BackgroundTask::IntifaceConnection);
+            nih_dbg!("process START.call_once");
+            context.execute_background(Self::BackgroundTask::Process);
         });
         while let Some(NoteEvent::NoteOn { .. }) = context.next_event() {
             match self.channel.0.try_send(self.params.level.value()) {
-                Ok(_) => {}
-                Err(e) => {
-                    nih_dbg!(e);
+                Ok(..) => {}
+                Err(err) => {
+                    nih_dbg!(err);
                 }
             }
         }
@@ -306,10 +164,131 @@ impl ClapPlugin for Buttclap {
 nih_export_clap!(Buttclap);
 // nih_export_vst3!(Buttclap);
 
-fn normalize_device_name(name: &str) -> String {
-    name.split(|c: char| !c.is_alphanumeric())
-        .collect::<String>()
+fn background_process(intiface_url: String, channel: Receiver<f32>) {
+    nih_dbg!("background_process");
+    tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .enable_time()
+        .build()
+        .unwrap()
+        .block_on(async move {
+            nih_dbg!("background_process runtime.block_on");
+            let local = task::LocalSet::new();
+            local
+                .run_until(async move {
+                    let (devices_w, devices) = unsafe { evmap::new_assert_stable::<u32, Device>() };
+                    task::spawn_local(intiface_task(intiface_url, devices_w));
+                    task::spawn_local(modulation_task(channel, devices));
+                })
+                .await;
+            local.await;
+        });
+    nih_dbg!("Unexpected: background_process should not return");
 }
+
+async fn intiface_task(intiface_url: String, mut devices: WriteHandle<u32, Device>) {
+    loop {
+        nih_dbg!("intiface_task loop");
+        let client = ButtplugClient::new("buttclap");
+        let connector = ButtplugRemoteClientConnector::<ButtplugWebsocketClientTransport>::new(
+            ButtplugWebsocketClientTransport::new_insecure_connector(&intiface_url),
+        );
+        // subscribing before connecting to prevent "[ERROR] Client event DeviceAdded(ButtplugClientDevice {..}) dropped, no client event listener available"
+        let event_stream = client.event_stream();
+
+        match client.connect(connector).await {
+            Ok(..) => {
+                intiface_event_loop(client, event_stream, &mut devices).await;
+            }
+            Err(err) => {
+                nih_dbg!(err);
+            }
+        }
+
+        devices.purge();
+        devices.publish();
+        wait_a_sec().await;
+    }
+}
+
+async fn intiface_event_loop<S: Stream<Item = ButtplugClientEvent>>(
+    client: ButtplugClient,
+    event_stream: S,
+    devices: &mut WriteHandle<u32, Device>,
+) where
+    <S as Stream>::Item: std::fmt::Debug,
+{
+    nih_dbg!("intiface_event_loop");
+    futures::pin_mut!(event_stream);
+
+    match client.start_scanning().await {
+        Ok(..) => {}
+        Err(err) => {
+            nih_dbg!(err);
+        }
+    }
+
+    while let Some(event) = event_stream.next().await {
+        nih_dbg!(&event);
+        match event {
+            ButtplugClientEvent::DeviceAdded(device) => {
+                devices.update(
+                    device.index(),
+                    Device {
+                        device: Arc::new(device),
+                    },
+                );
+                devices.publish();
+                yield_now().await;
+            }
+            ButtplugClientEvent::DeviceRemoved(_device) => {
+                // rescanning, maybe a temporary disconnect
+                let _ = client.stop_scanning().await;
+                let _ = client.start_scanning().await;
+            }
+            ButtplugClientEvent::ServerDisconnect => {
+                return; // reconnect in a loop
+            }
+            ButtplugClientEvent::Error(err) => {
+                nih_dbg!(err);
+                return; // reconnect in a loop
+            }
+            _ => {}
+        }
+    }
+}
+
+async fn modulation_task(channel: Receiver<f32>, devices: ReadHandle<u32, Device>) {
+    nih_dbg!("modulation_task");
+    loop {
+        if let Ok(level) = channel.recv_timeout(Duration::from_millis(10)) {
+            nih_dbg!(level);
+            if let Some(devices) = devices.enter() {
+                for (_name, value) in devices.iter() {
+                    if let Some(device) = value.get_one() {
+                        nih_dbg!(device);
+                        match device.vibrate(level as f64).await {
+                            Ok(..) => {}
+                            Err(err) => {
+                                nih_dbg!(err);
+                            }
+                        };
+                    };
+                }
+            };
+        }
+        yield_now().await;
+    }
+}
+
+async fn wait_a_sec() {
+    tokio::time::sleep(Duration::from_secs(1)).await
+}
+
+// fn normalize_device_name(name: &str) -> String {
+//     name.split(|c: char| !c.is_alphanumeric())
+//         .collect::<String>()
+// }
 
 #[derive(Debug, Eq, Clone)]
 struct Device {

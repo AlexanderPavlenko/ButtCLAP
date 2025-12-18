@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Lexi <x.ywtop@slmail.me>"]
 license = "GPL-3.0-or-later"
 homepage = "https://github.com/AlexanderPavlenko/ButtCLAP"
-description = "CLAP plugin to control things via Intiface® Central"
+description = "CLAP plug-in to control things via Intiface® Central"
 
 [workspace]
 members = ["xtask"]
@@ -16,7 +16,7 @@ crate-type = ["cdylib"]
 [dependencies]
 # Remove the `assert_process_allocs` feature to allow allocations on the audio
 # thread in debug builds.
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "28b149ec4d62757d0b448809148a0c3ca6e09a95" }
 # Uncomment the below line to disable the on-by-default VST3 feature to remove
 # the GPL compatibility requirement
 # nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["assert_process_allocs"] }
