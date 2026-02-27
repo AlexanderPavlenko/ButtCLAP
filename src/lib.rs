@@ -1,3 +1,4 @@
+use buttplug_client::device::{ClientDeviceCommandValue, ClientDeviceOutputCommand};
 use buttplug_client::{
     connector::ButtplugRemoteClientConnector, ButtplugClient, ButtplugClientDevice,
     ButtplugClientEvent,
@@ -267,7 +268,12 @@ async fn modulation_task(channel: Receiver<f32>, devices: ReadHandle<u32, Device
                 for (_name, value) in devices.iter() {
                     if let Some(device) = value.get_one() {
                         nih_dbg!(device);
-                        match device.vibrate(level as f64).await {
+                        let result = device
+                            .run_output(&ClientDeviceOutputCommand::Vibrate(
+                                ClientDeviceCommandValue::Percent(level as f64),
+                            ))
+                            .await;
+                        match result {
                             Ok(..) => {}
                             Err(err) => {
                                 nih_dbg!(err);
@@ -297,7 +303,7 @@ struct Device {
 
 impl std::hash::Hash for Device {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.device.name().hash(state);
+        self.device.index().hash(state);
     }
 }
 

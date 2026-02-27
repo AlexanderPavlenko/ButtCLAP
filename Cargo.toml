@@ -21,8 +21,8 @@ nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "28b149e
 # the GPL compatibility requirement
 # nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["assert_process_allocs"] }
 
-buttplug_client = { git = "https://github.com/buttplugio/buttplug", rev = "385963ae56e77361c37fbc53747ff6f253c624a1" } # v10.0.0-beta4
-buttplug_transport_websocket_tungstenite = { git = "https://github.com/buttplugio/buttplug", rev = "385963ae56e77361c37fbc53747ff6f253c624a1" }
+buttplug_client = "10.0.0"
+buttplug_transport_websocket_tungstenite = "10.0.0"
 evmap = "11.0.0"
 
 # not exported by buttplug_core

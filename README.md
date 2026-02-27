@@ -12,7 +12,7 @@ cargo xtask bundle buttclap --release
 
 ## Usage
 
-Requires [Intiface® Central](https://github.com/intiface/intiface-central/releases) v3 which is in beta.
+Requires [Intiface® Central](https://github.com/intiface/intiface-central/releases) v3.
 - App Mode: Engine
 
 MIDI NoteOn events trigger "Sample&Hold" of the Level param which can be modulated or remote controlled with any frequency.
