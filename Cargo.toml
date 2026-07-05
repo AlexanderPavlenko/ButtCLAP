@@ -1,6 +1,6 @@
 [package]
 name = "buttclap"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Lexi <x.ywtop@slmail.me>"]
 license = "GPL-3.0-or-later"
@@ -16,23 +16,24 @@ crate-type = ["cdylib"]
 [dependencies]
 # Remove the `assert_process_allocs` feature to allow allocations on the audio
 # thread in debug builds.
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "28b149ec4d62757d0b448809148a0c3ca6e09a95" }
-# Uncomment the below line to disable the on-by-default VST3 feature to remove
-# the GPL compatibility requirement
-# nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["assert_process_allocs"] }
+nice-plug = { git = "https://codeberg.org/RustAudio/nice-plug.git", rev = "9bc2ffa00acd0a68de46f217d7f220fa2d9caf59" }
 
-buttplug_client = "10.0.0"
-buttplug_transport_websocket_tungstenite = "10.0.0"
+buttplug_client = "10.0.3"
+buttplug_transport_websocket_tungstenite = "10.0.3"
 evmap = "11.0.0"
 
 # not exported by buttplug_core
 tokio = { version = "*", features = ["sync", "time", "macros"] }
 futures = "*"
 
-# not exported by nih_plug
+# not exported by nice-plug
 crossbeam = "*"
 
+[profile.dev]
+opt-level = 1
+
 [profile.release]
+codegen-units = 1
 lto = "thin"
 strip = "symbols"
 

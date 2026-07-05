@@ -8,7 +8,7 @@ use crossbeam::channel::{bounded, Receiver, Sender};
 use evmap;
 use evmap::handles::{ReadHandle, WriteHandle};
 use futures::{Stream, StreamExt};
-use nih_plug::prelude::*;
+use nice_plug::prelude::*;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Once;
@@ -25,7 +25,6 @@ struct Buttclap {
     channel: (Sender<f32>, Receiver<f32>),
 }
 
-// https://github.com/robbert-vdh/nih-plug/pull/106/files
 enum ButtclapBackgroundTask {
     Process,
 }
@@ -85,7 +84,7 @@ impl Plugin for Buttclap {
     //   - Called after the plugin instance is created
     //   - Send result back over a channel or triple buffer
     fn task_executor(&mut self) -> TaskExecutor<Self> {
-        nih_dbg!("task_executor");
+        nice_dbg!("task_executor");
         let intiface_url = self.intiface_url.clone();
         let channel = self.channel.1.clone();
         Box::new(move |task| match task {
@@ -123,14 +122,14 @@ impl Plugin for Buttclap {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         START.call_once(|| {
-            nih_dbg!("process START.call_once");
+            nice_dbg!("process START.call_once");
             context.execute_background(Self::BackgroundTask::Process);
         });
         while let Some(NoteEvent::NoteOn { .. }) = context.next_event() {
             match self.channel.0.try_send(self.params.level.value()) {
                 Ok(..) => {}
                 Err(err) => {
-                    nih_dbg!(err);
+                    nice_dbg!(err);
                 }
             }
         }
@@ -162,18 +161,18 @@ impl ClapPlugin for Buttclap {
 //         &[Vst3SubCategory::Fx, Vst3SubCategory::Tools];
 // }
 
-nih_export_clap!(Buttclap);
-// nih_export_vst3!(Buttclap);
+nice_export_clap!(Buttclap);
+// nice_export_vst3!(Buttclap);
 
 fn background_process(intiface_url: String, channel: Receiver<f32>) {
-    nih_dbg!("background_process");
+    nice_dbg!("background_process");
     tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .enable_time()
         .build()
         .unwrap()
         .block_on(async move {
-            nih_dbg!("background_process runtime.block_on");
+            nice_dbg!("background_process runtime.block_on");
             let local = task::LocalSet::new();
             local
                 .run_until(async move {
@@ -184,12 +183,12 @@ fn background_process(intiface_url: String, channel: Receiver<f32>) {
                 .await;
             local.await;
         });
-    nih_dbg!("Unexpected: background_process should not return");
+    nice_dbg!("Unexpected: background_process should not return");
 }
 
 async fn intiface_task(intiface_url: String, mut devices: WriteHandle<u32, Device>) {
     loop {
-        nih_dbg!("intiface_task loop");
+        nice_dbg!("intiface_task loop");
         let client = ButtplugClient::new("buttclap");
         let connector = ButtplugRemoteClientConnector::<ButtplugWebsocketClientTransport>::new(
             ButtplugWebsocketClientTransport::new_insecure_connector(&intiface_url),
@@ -202,7 +201,7 @@ async fn intiface_task(intiface_url: String, mut devices: WriteHandle<u32, Devic
                 intiface_event_loop(client, event_stream, &mut devices).await;
             }
             Err(err) => {
-                nih_dbg!(err);
+                nice_dbg!(err);
             }
         }
 
@@ -219,18 +218,18 @@ async fn intiface_event_loop<S: Stream<Item = ButtplugClientEvent>>(
 ) where
     <S as Stream>::Item: std::fmt::Debug,
 {
-    nih_dbg!("intiface_event_loop");
+    nice_dbg!("intiface_event_loop");
     futures::pin_mut!(event_stream);
 
     match client.start_scanning().await {
         Ok(..) => {}
         Err(err) => {
-            nih_dbg!(err);
+            nice_dbg!(err);
         }
     }
 
     while let Some(event) = event_stream.next().await {
-        nih_dbg!(&event);
+        nice_dbg!(&event);
         match event {
             ButtplugClientEvent::DeviceAdded(device) => {
                 devices.update(
@@ -251,7 +250,7 @@ async fn intiface_event_loop<S: Stream<Item = ButtplugClientEvent>>(
                 return; // reconnect in a loop
             }
             ButtplugClientEvent::Error(err) => {
-                nih_dbg!(err);
+                nice_dbg!(err);
                 return; // reconnect in a loop
             }
             _ => {}
@@ -260,14 +259,14 @@ async fn intiface_event_loop<S: Stream<Item = ButtplugClientEvent>>(
 }
 
 async fn modulation_task(channel: Receiver<f32>, devices: ReadHandle<u32, Device>) {
-    nih_dbg!("modulation_task");
+    nice_dbg!("modulation_task");
     loop {
         if let Ok(level) = channel.recv_timeout(Duration::from_millis(10)) {
-            nih_dbg!(level);
+            nice_dbg!(level);
             if let Some(devices) = devices.enter() {
                 for (_name, value) in devices.iter() {
                     if let Some(device) = value.get_one() {
-                        nih_dbg!(device);
+                        nice_dbg!(device);
                         let result = device
                             .run_output(&ClientDeviceOutputCommand::Vibrate(
                                 ClientDeviceCommandValue::Percent(level as f64),
@@ -276,7 +275,7 @@ async fn modulation_task(channel: Receiver<f32>, devices: ReadHandle<u32, Device
                         match result {
                             Ok(..) => {}
                             Err(err) => {
-                                nih_dbg!(err);
+                                nice_dbg!(err);
                             }
                         };
                     };

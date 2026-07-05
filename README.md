@@ -20,9 +20,9 @@ Actual update frequency clock can be one note clip playing in a short loop, or a
 
 ## Troubleshooting
 
-Run DAW with `NIH_LOG` env var to enable logging.
+Run DAW with `NICE_LOG` env var to enable logging.
 Build without `--release` flag to increase verbosity.
 
 ```shell
-NIH_LOG=~/nih.log /var/lib/flatpak/app/com.bitwig.BitwigStudio/current/active/files/bitwig-studio
+NICE_LOG=~/nice.log /var/lib/flatpak/app/com.bitwig.BitwigStudio/current/active/files/bitwig-studio
 ```
